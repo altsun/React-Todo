@@ -19,7 +19,7 @@ const ProfilePicture = styled.img`
   margin-right: 5px;
 `;
 
-export default ({ user }) => (
+const Navigation = ({ user }) => (
   <NavigationBar>
     <Link className="btn btn-primary" to="/">
       TodoList
@@ -39,3 +39,5 @@ export default ({ user }) => (
     )}
   </NavigationBar>
 );
+
+export default Navigation;
