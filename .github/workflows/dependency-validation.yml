@@ -1,0 +1,55 @@
+name: Dependency validation
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Snapshot lockfile
+        run: cp package-lock.json "$RUNNER_TEMP/react-todo-lock-before-ci.json"
+      - name: Clean install
+        id: install
+        run: npm ci --no-audit --no-fund
+      - name: Verify lockfile was not changed during install
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: cmp package-lock.json "$RUNNER_TEMP/react-todo-lock-before-ci.json"
+      - name: Verify dependency tree
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm ls --all
+      - name: Unit tests
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm test -- --watchAll=false --runInBand
+      - name: Production build
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run build
+      - name: Record npm audit
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        shell: bash
+        run: |
+          set +e
+          npm audit --json > npm-audit.json
+          audit_status=$?
+          set -e
+          node -e 'const a = require("./npm-audit.json"); if (a.error || !a.metadata || !a.metadata.vulnerabilities) process.exit(1); console.log(a.metadata.vulnerabilities)'
+          echo "npm audit exit code: $audit_status (review residual advisories in artifact)"
+      - name: Upload lockfile and audit for manual review
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-validation
+          path: |
+            package-lock.json
+            npm-audit.json
+          if-no-files-found: error
