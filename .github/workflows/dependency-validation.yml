@@ -17,9 +17,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Generate candidate lockfile (draft only)
-        if: ${{ github.event.pull_request.draft }}
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
       - name: Snapshot lockfile
         run: cp package-lock.json "$RUNNER_TEMP/react-todo-lock-before-ci.json"
       - name: Clean install
