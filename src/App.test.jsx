@@ -1,26 +1,30 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { act } from "react-dom/test-utils";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { Provider } from "react-redux";
 import { MemoryRouter } from "react-router-dom";
 import { applyMiddleware, createStore } from "redux";
 import createSagaMiddleware from "redux-saga";
-import auth0 from "auth0-js";
 
 import App from "./App";
 import { loadTodoList } from "./actions";
 import todoApp from "./reducers";
 import rootSaga from "./sagas";
 
-jest.mock("auth0-js", () => ({
-  WebAuth: jest.fn(function () {
-    this.authorize = jest.fn();
-    this.logout = jest.fn();
-    this.parseHash = jest.fn();
-  })
+const auth = vi.hoisted(() => ({
+  authorize: vi.fn(),
+  logout: vi.fn(),
+  parseHash: vi.fn()
 }));
 
-const auth = auth0.WebAuth.mock.instances[0];
+vi.mock("auth0-js", () => ({
+  default: {
+    WebAuth: function () {
+      Object.assign(this, auth);
+    }
+  }
+}));
 const originalFetch = global.fetch;
 const originalActEnvironment = global.IS_REACT_ACT_ENVIRONMENT;
 let container;
@@ -74,7 +78,7 @@ function click(selector) {
 }
 
 it("loads todos, navigates to the add form and lists the new item", async () => {
-  global.fetch = jest.fn().mockResolvedValue({
+  global.fetch = vi.fn().mockResolvedValue({
     json: async () => [{ _id: "fixture", title: "Existing todo" }]
   });
   await act(async () => {

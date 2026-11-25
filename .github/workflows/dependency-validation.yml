@@ -30,10 +30,14 @@ jobs:
         run: npm ls --all
       - name: Unit tests
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: npm test -- --watchAll=false --runInBand
+        run: npm test
       - name: Production build
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run build
+      - name: Install Chromium
+        run: npm exec -- playwright install --with-deps --only-shell chromium
+      - name: Browser smoke test
+        run: npm run test:browser
       - name: Record npm audit
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         shell: bash
