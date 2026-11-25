@@ -1,5 +1,5 @@
 import React from "react";
-import { render } from "react-dom";
+import { createRoot } from "react-dom/client";
 import { Provider } from "react-redux";
 import { createStore, applyMiddleware } from "redux";
 import createSagaMiddleware from "redux-saga";
@@ -18,11 +18,10 @@ sagaMiddleware.run(rootSaga);
 
 store.dispatch(loadTodoList());
 
-render(
+createRoot(document.getElementById("root")).render(
   <Provider store={store}>
     <BrowserRouter>
       <App />
     </BrowserRouter>
-  </Provider>,
-  document.getElementById("root")
+  </Provider>
 );
