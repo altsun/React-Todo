@@ -2,6 +2,11 @@ name: Dependency validation
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [master]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions:
   contents: read
 jobs:
@@ -17,6 +22,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: npm
       - name: Snapshot lockfile
         run: cp package-lock.json "$RUNNER_TEMP/react-todo-lock-before-ci.json"
       - name: Clean install
@@ -29,16 +35,25 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm ls --all
       - name: Unit tests
+        id: unit
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: npm test
+        run: npm test -- --reporter=default --reporter=junit --outputFile.junit=vitest-results.xml
       - name: Production build
+        id: build
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run build
       - name: Install Chromium
+        id: chromium
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: npm exec -- playwright install --with-deps --only-shell chromium
       - name: Browser smoke test
-        run: npm run test:browser
+        id: browser
+        if: ${{ !cancelled() && steps.chromium.outcome == 'success' }}
+        env:
+          PLAYWRIGHT_JUNIT_OUTPUT_FILE: playwright-results.xml
+        run: npm run test:browser -- --reporter=line,junit
       - name: Record npm audit
+        id: audit
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         shell: bash
         run: |
@@ -48,12 +63,38 @@ jobs:
           set -e
           node -e 'const a = require("./npm-audit.json"); if (a.error || !a.metadata || !a.metadata.vulnerabilities) process.exit(1); console.log(a.metadata.vulnerabilities)'
           echo "npm audit exit code: $audit_status (review residual advisories in artifact)"
-      - name: Upload lockfile and audit for manual review
+      - name: Record validation metadata
+        if: ${{ !cancelled() }}
+        env:
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          UNIT_OUTCOME: ${{ steps.unit.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          BROWSER_OUTCOME: ${{ steps.browser.outcome }}
+          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
+        run: |
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "event=$GITHUB_EVENT_NAME"
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "run_attempt=$GITHUB_RUN_ATTEMPT"
+            echo "node=$(node --version)"
+            echo "npm=$(npm --version)"
+            echo "install=$INSTALL_OUTCOME"
+            echo "vitest=$UNIT_OUTCOME"
+            echo "build=$BUILD_OUTCOME"
+            echo "playwright=$BROWSER_OUTCOME"
+            echo "audit_report=$AUDIT_OUTCOME"
+          } > validation-results.txt
+      - name: Upload validation results
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: dependency-validation
+          name: dependency-validation-${{ github.event_name }}-${{ github.sha }}-${{ github.run_attempt }}
+          retention-days: 30
           path: |
             package-lock.json
             npm-audit.json
+            vitest-results.xml
+            playwright-results.xml
+            validation-results.txt
           if-no-files-found: error
